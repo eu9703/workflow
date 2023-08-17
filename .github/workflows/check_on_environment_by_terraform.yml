@@ -3,10 +3,6 @@ name: Reusable Check
 on:
   workflow_call:
 
-env:
-  # Setting an environment variable with the value of a configuration variable
-  TF_WORKSPACE: ${{ vars.TF_WORKSPACE }}
-
 jobs:
   check-on-dev:
     name: Check terraform plan

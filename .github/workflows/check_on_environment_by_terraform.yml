@@ -1,0 +1,88 @@
+name: Reusable Check
+
+on:
+  workflow_call:
+
+env:
+  # Setting an environment variable with the value of a configuration variable
+  TF_WORKSPACE: ${{ vars.TF_WORKSPACE }}
+
+jobs:
+  check-on-dev:
+    name: Check terraform plan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Render terraform docs inside the README.md and push changes back to PR branch
+        uses: terraform-docs/gh-actions@v1.0.0
+        with:
+          find-dir: .
+          output-file: README.md
+          output-method: inject
+          git-push: "true"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -input=false
+        continue-on-error: true
+
+      - name: Get info from GH Actions
+        id: url
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "url=$(gh api \
+          --header 'Accept: application/vnd.github.v3+json' \
+          --method GET \
+          repos/CFA-Institute/${{ github.event.repository.name }}/actions/runs/${GITHUB_RUN_ID}/jobs \
+          | jq '.jobs[0].html_url' \
+          --raw-output)" \
+          >> $GITHUB_OUTPUT
+
+      - uses: actions/github-script@v6
+        env:
+          URL: "${{ steps.url.outputs.url }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const run_url = process.env.URL + '#step:9:10'
+            const run_link = '<a href="' + run_url + '">Actions</a>.'
+            const info_message = "You can read full Plan in " + run_link + "<br /><br />"
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+            ${info_message}
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Terraform Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1

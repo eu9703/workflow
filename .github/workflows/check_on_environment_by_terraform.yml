@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.action != 'closed' && 'github.event.pull_request.head.ref' || 'github.event.pull_request.head.sha' }}
           token: ${{ secrets.GH_TOKEN }}
 
       - name: Render terraform docs inside the README.md and push changes back to PR branch
